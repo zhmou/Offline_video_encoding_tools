@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.npm-cache/
+public/ffmpeg-core/
+output/
+test-results/
+
+.DS_Store
+Thumbs.db
+*.local
