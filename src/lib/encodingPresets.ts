@@ -1,9 +1,7 @@
-import type { OutputFormat } from '@/types';
-
 export type RateControlMode = 'x264' | 'x265' | 'vp9' | 'vp8';
 
-export interface EncodingPreset {
-  id: OutputFormat;
+export interface EncodingPresetDefinition {
+  id: string;
   label: string;
   extension: 'mp4' | 'mov' | 'mkv' | 'webm';
   mime: string;
@@ -14,7 +12,7 @@ export interface EncodingPreset {
   hevcTag?: boolean;
 }
 
-export const ENCODING_PRESETS: EncodingPreset[] = [
+export const ENCODING_PRESETS = [
   {
     id: 'mp4-h264',
     label: 'MP4 · H.264/AAC',
@@ -82,7 +80,11 @@ export const ENCODING_PRESETS: EncodingPreset[] = [
     audioCodec: 'libopus',
     rateControl: 'vp8',
   },
-];
+] as const satisfies readonly EncodingPresetDefinition[];
+
+export type OutputFormat = (typeof ENCODING_PRESETS)[number]['id'];
+export type EncodingPreset = EncodingPresetDefinition & { id: OutputFormat };
+export const DEFAULT_OUTPUT_FORMAT: OutputFormat = ENCODING_PRESETS[0].id;
 
 const presetById = Object.fromEntries(
   ENCODING_PRESETS.map((preset) => [preset.id, preset]),
@@ -90,4 +92,8 @@ const presetById = Object.fromEntries(
 
 export function getEncodingPreset(outputFormat: OutputFormat): EncodingPreset {
   return presetById[outputFormat];
+}
+
+export function isOutputFormat(value: string): value is OutputFormat {
+  return Object.prototype.hasOwnProperty.call(presetById, value);
 }

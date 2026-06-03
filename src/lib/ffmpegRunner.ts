@@ -1,6 +1,11 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
-import type { CompressionResult, CompressionSettings, OutputFormat, VideoMetadata } from '@/types';
+import type { CompressionResult, CompressionSettings, VideoMetadata } from '@/types';
+import {
+  getEncodingPreset,
+  type EncodingPreset,
+  type RateControlMode,
+} from '@/lib/encodingPresets';
 import { changeExtension, mimeForFormat } from '@/lib/video';
 
 type ProgressHandler = (progress: number) => void;
@@ -16,8 +21,7 @@ export class LocalFfmpegRunner {
     settings: CompressionSettings,
     onProgress: ProgressHandler,
   ): Promise<CompressionResult> {
-    const extension = getExtension(file.name, settings.outputFormat);
-    const inputName = `input-${Date.now()}.${extension}`;
+    const inputName = `input-${Date.now()}.${getInputExtension(file.name)}`;
     const outputName = changeExtension(file.name, settings.outputFormat);
     let ffmpeg: FFmpeg | null = null;
 
@@ -112,6 +116,7 @@ function buildFfmpegArgs(
   metadata: VideoMetadata | undefined,
   settings: CompressionSettings,
 ): string[] {
+  const preset = getEncodingPreset(settings.outputFormat);
   const args = ['-i', inputName, '-map', '0:v:0'];
   const videoFilters = buildVideoFilters(metadata, settings.maxWidth);
 
@@ -119,28 +124,40 @@ function buildFfmpegArgs(
     args.push('-vf', videoFilters.join(','));
   }
 
-  if (settings.outputFormat === 'mp4') {
-    args.push('-c:v', 'libx264', '-preset', presetForIntensity(settings.intensity), '-pix_fmt', 'yuv420p');
-    appendRateArgs(args, file, metadata, settings, 'mp4');
-    args.push('-movflags', '+faststart');
-  } else {
-    args.push('-c:v', 'libvpx-vp9', '-deadline', 'good', '-cpu-used', cpuUsedForIntensity(settings.intensity));
-    appendRateArgs(args, file, metadata, settings, 'webm');
+  appendVideoCodecArgs(args, preset, settings);
+  appendRateArgs(args, file, metadata, settings, preset.rateControl);
+
+  if (preset.hevcTag) {
+    args.push('-tag:v', 'hvc1');
   }
 
   if (settings.keepAudio) {
-    args.push('-map', '0:a?');
-    if (settings.outputFormat === 'mp4') {
-      args.push('-c:a', 'aac', '-b:a', '96k');
-    } else {
-      args.push('-c:a', 'libopus', '-b:a', '96k');
-    }
+    args.push('-map', '0:a?', '-c:a', preset.audioCodec, '-b:a', '96k');
   } else {
     args.push('-an');
   }
 
+  if (preset.mp4FastStart) {
+    args.push('-movflags', '+faststart');
+  }
+
   args.push('-y', outputName);
   return args;
+}
+
+function appendVideoCodecArgs(
+  args: string[],
+  preset: EncodingPreset,
+  settings: CompressionSettings,
+): void {
+  args.push('-c:v', preset.videoCodec);
+
+  if (preset.rateControl === 'x264' || preset.rateControl === 'x265') {
+    args.push('-preset', presetForIntensity(settings.intensity), '-pix_fmt', 'yuv420p');
+    return;
+  }
+
+  args.push('-deadline', 'good', '-cpu-used', cpuUsedForIntensity(settings.intensity), '-pix_fmt', 'yuv420p');
 }
 
 function appendRateArgs(
@@ -148,7 +165,7 @@ function appendRateArgs(
   file: File,
   metadata: VideoMetadata | undefined,
   settings: CompressionSettings,
-  outputFormat: OutputFormat,
+  mode: RateControlMode,
 ): void {
   const targetBitrate = calculateTargetVideoBitrate(file, metadata, settings);
 
@@ -157,11 +174,22 @@ function appendRateArgs(
     return;
   }
 
-  if (outputFormat === 'mp4') {
+  if (mode === 'x264') {
     args.push('-crf', `${crfForIntensity(settings.intensity, settings.profile)}`);
-  } else {
-    args.push('-crf', `${vp9CrfForIntensity(settings.intensity, settings.profile)}`, '-b:v', '0');
+    return;
   }
+
+  if (mode === 'x265') {
+    args.push('-crf', `${x265CrfForIntensity(settings.intensity, settings.profile)}`);
+    return;
+  }
+
+  if (mode === 'vp9') {
+    args.push('-crf', `${vp9CrfForIntensity(settings.intensity, settings.profile)}`, '-b:v', '0');
+    return;
+  }
+
+  args.push('-b:v', `${fallbackBitrateForIntensity(file, metadata, settings)}k`);
 }
 
 function calculateTargetVideoBitrate(
@@ -188,18 +216,45 @@ function buildVideoFilters(metadata: VideoMetadata | undefined, maxWidth: number
   return [`scale=${maxWidth}:-2`];
 }
 
-function getExtension(fileName: string, fallback: OutputFormat): string {
-  return fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || fallback;
+function getInputExtension(fileName: string): string {
+  return fileName.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'video';
 }
 
 function crfForIntensity(intensity: number, profile: CompressionSettings['profile']): number {
   const offset = profile === 'quality' ? -2 : profile === 'small' ? 2 : 0;
-  return clamp(Math.round(34 - intensity * 0.12 + offset), 20, 34);
+  return clamp(Math.round(20 + intensity * 0.16 + offset), 20, 34);
+}
+
+function x265CrfForIntensity(intensity: number, profile: CompressionSettings['profile']): number {
+  return clamp(crfForIntensity(intensity, profile) + 2, 22, 36);
 }
 
 function vp9CrfForIntensity(intensity: number, profile: CompressionSettings['profile']): number {
   const offset = profile === 'quality' ? -4 : profile === 'small' ? 4 : 0;
-  return clamp(Math.round(48 - intensity * 0.18 + offset), 28, 50);
+  return clamp(Math.round(30 + intensity * 0.18 + offset), 30, 52);
+}
+
+function fallbackBitrateForIntensity(
+  file: File,
+  metadata: VideoMetadata | undefined,
+  settings: CompressionSettings,
+): number {
+  const sourceKbps =
+    metadata?.duration && metadata.duration > 0
+      ? Math.floor((file.size * 8) / 1024 / metadata.duration)
+      : null;
+  const width = metadata?.width && metadata.width > 0 ? Math.min(metadata.width, settings.maxWidth) : 1280;
+  const height =
+    metadata?.width && metadata.height && metadata.width > 0
+      ? Math.round((metadata.height * width) / metadata.width)
+      : 720;
+  const pixelRatio = (width * height) / (1280 * 720);
+  const estimatedKbps = Math.round(clamp(pixelRatio, 0.3, 8) * 1800);
+  const baseline = sourceKbps ? Math.min(sourceKbps, estimatedKbps) : estimatedKbps;
+  const profileFactor = settings.profile === 'quality' ? 1 : settings.profile === 'small' ? 0.55 : 0.75;
+  const intensityFactor = 1 - ((clamp(settings.intensity, 10, 95) - 10) / 85) * 0.3;
+
+  return Math.max(160, Math.round(baseline * profileFactor * intensityFactor));
 }
 
 function presetForIntensity(intensity: number): string {

@@ -16,6 +16,7 @@ import {
   Zap,
 } from 'lucide-vue-next';
 import { LocalFfmpegRunner } from '@/lib/ffmpegRunner';
+import { DEFAULT_OUTPUT_FORMAT, ENCODING_PRESETS, isOutputFormat } from '@/lib/encodingPresets';
 import {
   createQueueId,
   formatBytes,
@@ -23,10 +24,10 @@ import {
   getVideoMetadata,
   isVideoFile,
 } from '@/lib/video';
-import type { CompressionProfile, CompressionSettings, OutputFormat, QueueItem } from '@/types';
+import type { CompressionProfile, CompressionSettings, QueueItem } from '@/types';
 
 const settings = reactive<CompressionSettings>({
-  outputFormat: 'mp4',
+  outputFormat: DEFAULT_OUTPUT_FORMAT,
   targetSizeMb: null,
   maxWidth: 1280,
   keepAudio: true,
@@ -237,7 +238,10 @@ function revokeOutput(item: QueueItem): void {
 }
 
 function onFormatChange(event: Event): void {
-  settings.outputFormat = (event.target as HTMLSelectElement).value as OutputFormat;
+  const value = (event.target as HTMLSelectElement).value;
+  if (isOutputFormat(value)) {
+    settings.outputFormat = value;
+  }
 }
 
 function onProfileChange(event: Event): void {
@@ -370,8 +374,9 @@ function statusLabel(item: QueueItem): string {
         <label class="field">
           <span>格式</span>
           <fluent-select :value="settings.outputFormat" @change="onFormatChange">
-            <fluent-option value="mp4">MP4 · H.264/AAC</fluent-option>
-            <fluent-option value="webm">WebM · VP9/Opus</fluent-option>
+            <fluent-option v-for="preset in ENCODING_PRESETS" :key="preset.id" :value="preset.id">
+              {{ preset.label }}
+            </fluent-option>
           </fluent-select>
         </label>
 
