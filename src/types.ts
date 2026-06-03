@@ -1,4 +1,11 @@
-export type OutputFormat = 'mp4' | 'webm';
+export type OutputFormat =
+  | 'mp4-h264'
+  | 'mp4-h265'
+  | 'mov-h264'
+  | 'mkv-h264'
+  | 'mkv-h265'
+  | 'webm-vp9'
+  | 'webm-vp8';
 
 export type QueueStatus = 'pending' | 'processing' | 'done' | 'error' | 'cancelled';
 

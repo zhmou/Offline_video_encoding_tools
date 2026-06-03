@@ -1,4 +1,5 @@
 import type { OutputFormat, VideoMetadata } from '@/types';
+import { getEncodingPreset } from '@/lib/encodingPresets';
 
 const videoExtensions = new Set([
   'mp4',
@@ -79,11 +80,11 @@ export function formatDuration(seconds = 0): string {
 
 export function changeExtension(fileName: string, outputFormat: OutputFormat): string {
   const baseName = fileName.replace(/\.[^/.]+$/, '') || 'compressed-video';
-  return `${baseName}-compressed.${outputFormat}`;
+  return `${baseName}-compressed.${getEncodingPreset(outputFormat).extension}`;
 }
 
 export function mimeForFormat(outputFormat: OutputFormat): string {
-  return outputFormat === 'mp4' ? 'video/mp4' : 'video/webm';
+  return getEncodingPreset(outputFormat).mime;
 }
 
 export function createQueueId(): string {
