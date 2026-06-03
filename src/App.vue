@@ -25,12 +25,18 @@ import {
   isOutputFormat,
 } from '@/lib/encodingPresets';
 import {
+  COMPRESSION_PROFILES,
+  canEditIntensity,
+  intensityForProfile,
+} from '@/lib/compressionProfiles';
+import {
   createQueueId,
   formatBytes,
   formatDuration,
   getVideoMetadata,
   isVideoFile,
 } from '@/lib/video';
+import { isBlockedPositiveNumberKey, readNumericControlValue } from '@/lib/formControls';
 import type { CompressionProfile, CompressionSettings, QueueItem } from '@/types';
 
 const settings = reactive<CompressionSettings>({
@@ -60,6 +66,7 @@ const pendingCount = computed(() => queue.value.filter((item) => item.status ===
 const canStart = computed(() => pendingCount.value > 0 && !isProcessing.value);
 const selectedPreset = computed(() => getEncodingPreset(settings.outputFormat));
 const codecOptions = computed(() => getPresetsByContainer(selectedPreset.value.extension));
+const canEditCustomIntensity = computed(() => canEditIntensity(settings.profile));
 const savingsRatio = computed(() => {
   if (!totalOriginalSize.value || !totalOutputSize.value) {
     return 0;
@@ -273,22 +280,45 @@ function onProfileChange(event: Event): void {
   const profile = (event.target as HTMLButtonElement).dataset.profile as CompressionProfile | undefined;
   if (profile) {
     settings.profile = profile;
-    settings.intensity = profile === 'quality' ? 35 : profile === 'small' ? 82 : 60;
+    settings.intensity = intensityForProfile(profile, settings.intensity);
   }
 }
 
 function onTargetSizeInput(event: Event): void {
-  const value = Number((event.target as HTMLInputElement).value);
+  const value = readNumericControlValue(event.target, Number.NaN);
   settings.targetSizeMb = Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function onTargetSizeBlur(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const value = readNumericControlValue(input, Number.NaN);
+
+  // 非法或非正数目标会回到留空的“自动”模式。
+  if (!Number.isFinite(value) || value <= 0) {
+    input.value = '';
+    settings.targetSizeMb = null;
+  }
+}
+
+function onTargetSizeKeydown(event: KeyboardEvent): void {
+  if (isBlockedPositiveNumberKey(event.key)) {
+    event.preventDefault();
+  }
+}
+
 function onMaxWidthInput(event: Event): void {
-  const value = Number((event.target as HTMLInputElement).value);
+  const value = readNumericControlValue(event.target, 1280);
   settings.maxWidth = Number.isFinite(value) ? value : 1280;
 }
 
 function onIntensityInput(event: Event): void {
-  const value = Number((event.target as HTMLInputElement).value);
+  // 滑条始终展示，但只有自定义模式能写入手动强度。
+  if (!canEditCustomIntensity.value) {
+    return;
+  }
+
+  const value = readNumericControlValue(event.target, 60);
+  settings.profile = 'custom';
   settings.intensity = Number.isFinite(value) ? value : 60;
 }
 
@@ -369,31 +399,32 @@ function statusLabel(item: QueueItem): string {
           </p>
         </div>
 
-        <div class="profile-group" aria-label="压缩预设">
-          <button
-            class="profile-button"
-            :class="{ active: settings.profile === 'small' }"
-            data-profile="small"
-            @click="onProfileChange"
-          >
-            小
-          </button>
-          <button
-            class="profile-button"
-            :class="{ active: settings.profile === 'balanced' }"
-            data-profile="balanced"
-            @click="onProfileChange"
-          >
-            均衡
-          </button>
-          <button
-            class="profile-button"
-            :class="{ active: settings.profile === 'quality' }"
-            data-profile="quality"
-            @click="onProfileChange"
-          >
-            质量
-          </button>
+        <div class="intensity-control" :class="{ 'is-disabled': !canEditCustomIntensity }">
+          <div class="profile-group" aria-label="强度">
+            <button
+              v-for="profile in COMPRESSION_PROFILES"
+              :key="profile.id"
+              class="profile-button"
+              :class="{ active: settings.profile === profile.id }"
+              :data-profile="profile.id"
+              @click="onProfileChange"
+            >
+              {{ profile.label }}
+            </button>
+          </div>
+
+          <label class="field intensity-field">
+            <span>{{ canEditCustomIntensity ? '自定义强度' : '强度' }} {{ settings.intensity }}</span>
+            <fluent-slider
+              min="10"
+              max="95"
+              step="1"
+              :current-value="String(settings.intensity)"
+              :disabled="!canEditCustomIntensity"
+              @change="onIntensityInput"
+              @input="onIntensityInput"
+            />
+          </label>
         </div>
 
         <div class="format-grid">
@@ -420,9 +451,13 @@ function statusLabel(item: QueueItem): string {
           <span>目标 MB</span>
           <fluent-text-field
             type="number"
-            min="1"
+            min="0.1"
+            step="0.1"
+            inputmode="decimal"
             placeholder="自动"
             :value="settings.targetSizeMb ?? ''"
+            @blur="onTargetSizeBlur"
+            @keydown="onTargetSizeKeydown"
             @input="onTargetSizeInput"
           />
         </label>
@@ -436,17 +471,6 @@ function statusLabel(item: QueueItem): string {
             <fluent-option value="854">854 px</fluent-option>
             <fluent-option value="640">640 px</fluent-option>
           </fluent-select>
-        </label>
-
-        <label class="field">
-          <span>强度 {{ settings.intensity }}</span>
-          <fluent-slider
-            min="10"
-            max="95"
-            step="1"
-            :value="String(settings.intensity)"
-            @input="onIntensityInput"
-          />
         </label>
 
         <label class="switch-row">

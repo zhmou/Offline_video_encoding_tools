@@ -4,7 +4,7 @@ export type { OutputFormat } from '@/lib/encodingPresets';
 
 export type QueueStatus = 'pending' | 'processing' | 'done' | 'error' | 'cancelled';
 
-export type CompressionProfile = 'small' | 'balanced' | 'quality';
+export type CompressionProfile = 'small' | 'balanced' | 'quality' | 'custom';
 
 export interface CompressionSettings {
   outputFormat: OutputFormat;
