@@ -268,10 +268,23 @@ p {
 
 .field {
   display: grid;
+  min-width: 0;
   gap: 6px;
   color: var(--ink);
   font-size: 13px;
   font-weight: 700;
+}
+
+.format-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+  gap: 10px;
+}
+
+.format-grid fluent-select,
+.format-grid fluent-select::part(control) {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .switch-row {
@@ -527,6 +540,7 @@ p {
   .panel-title,
   .upload-panel,
   .profile-group,
+  .format-grid,
   .switch-row {
     grid-column: 1 / -1;
   }
@@ -543,6 +557,10 @@ p {
 
   .control-panel {
     display: flex;
+  }
+
+  .format-grid {
+    grid-template-columns: 1fr;
   }
 
   .queue-toolbar {

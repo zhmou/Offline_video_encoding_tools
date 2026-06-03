@@ -16,7 +16,14 @@ import {
   Zap,
 } from 'lucide-vue-next';
 import { LocalFfmpegRunner } from '@/lib/ffmpegRunner';
-import { DEFAULT_OUTPUT_FORMAT, ENCODING_PRESETS, isOutputFormat } from '@/lib/encodingPresets';
+import {
+  DEFAULT_OUTPUT_FORMAT,
+  OUTPUT_CONTAINERS,
+  getEncodingPreset,
+  getPresetsByContainer,
+  isOutputContainer,
+  isOutputFormat,
+} from '@/lib/encodingPresets';
 import {
   createQueueId,
   formatBytes,
@@ -51,6 +58,8 @@ const totalOutputSize = computed(() =>
 );
 const pendingCount = computed(() => queue.value.filter((item) => item.status === 'pending').length);
 const canStart = computed(() => pendingCount.value > 0 && !isProcessing.value);
+const selectedPreset = computed(() => getEncodingPreset(settings.outputFormat));
+const codecOptions = computed(() => getPresetsByContainer(selectedPreset.value.extension));
 const savingsRatio = computed(() => {
   if (!totalOriginalSize.value || !totalOutputSize.value) {
     return 0;
@@ -237,9 +246,25 @@ function revokeOutput(item: QueueItem): void {
   item.outputUrl = undefined;
 }
 
-function onFormatChange(event: Event): void {
+function onContainerChange(event: Event): void {
   const value = (event.target as HTMLSelectElement).value;
-  if (isOutputFormat(value)) {
+  if (!isOutputContainer(value)) {
+    return;
+  }
+
+  const currentPreset = selectedPreset.value;
+  const presets = getPresetsByContainer(value);
+  const nextPreset =
+    presets.find((preset) => preset.rateControl === currentPreset.rateControl) ?? presets[0];
+
+  if (nextPreset) {
+    settings.outputFormat = nextPreset.id;
+  }
+}
+
+function onCodecChange(event: Event): void {
+  const value = (event.target as HTMLSelectElement).value;
+  if (isOutputFormat(value) && getEncodingPreset(value).extension === selectedPreset.value.extension) {
     settings.outputFormat = value;
   }
 }
@@ -371,14 +396,25 @@ function statusLabel(item: QueueItem): string {
           </button>
         </div>
 
-        <label class="field">
-          <span>格式</span>
-          <fluent-select :value="settings.outputFormat" @change="onFormatChange">
-            <fluent-option v-for="preset in ENCODING_PRESETS" :key="preset.id" :value="preset.id">
-              {{ preset.label }}
-            </fluent-option>
-          </fluent-select>
-        </label>
+        <div class="format-grid">
+          <label class="field">
+            <span>格式</span>
+            <fluent-select :value="selectedPreset.extension" @change="onContainerChange">
+              <fluent-option v-for="container in OUTPUT_CONTAINERS" :key="container.id" :value="container.id">
+                {{ container.label }}
+              </fluent-option>
+            </fluent-select>
+          </label>
+
+          <label class="field">
+            <span>编码</span>
+            <fluent-select :value="settings.outputFormat" @change="onCodecChange">
+              <fluent-option v-for="preset in codecOptions" :key="preset.id" :value="preset.id">
+                {{ preset.codecLabel }}
+              </fluent-option>
+            </fluent-select>
+          </label>
+        </div>
 
         <label class="field">
           <span>目标 MB</span>

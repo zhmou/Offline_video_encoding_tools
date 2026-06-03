@@ -2,7 +2,8 @@ export type RateControlMode = 'x264' | 'x265' | 'vp9' | 'vp8';
 
 export interface EncodingPresetDefinition {
   id: string;
-  label: string;
+  containerLabel: string;
+  codecLabel: string;
   extension: 'mp4' | 'mov' | 'mkv' | 'webm';
   mime: string;
   videoCodec: 'libx264' | 'libx265' | 'libvpx-vp9' | 'libvpx';
@@ -15,7 +16,8 @@ export interface EncodingPresetDefinition {
 export const ENCODING_PRESETS = [
   {
     id: 'mp4-h264',
-    label: 'MP4 · H.264/AAC',
+    containerLabel: 'MP4',
+    codecLabel: 'H.264/AAC',
     extension: 'mp4',
     mime: 'video/mp4',
     videoCodec: 'libx264',
@@ -25,7 +27,8 @@ export const ENCODING_PRESETS = [
   },
   {
     id: 'mp4-h265',
-    label: 'MP4 · H.265/AAC',
+    containerLabel: 'MP4',
+    codecLabel: 'H.265/AAC',
     extension: 'mp4',
     mime: 'video/mp4',
     videoCodec: 'libx265',
@@ -36,7 +39,8 @@ export const ENCODING_PRESETS = [
   },
   {
     id: 'mov-h264',
-    label: 'MOV · H.264/AAC',
+    containerLabel: 'MOV',
+    codecLabel: 'H.264/AAC',
     extension: 'mov',
     mime: 'video/quicktime',
     videoCodec: 'libx264',
@@ -46,7 +50,8 @@ export const ENCODING_PRESETS = [
   },
   {
     id: 'mkv-h264',
-    label: 'MKV · H.264/AAC',
+    containerLabel: 'MKV',
+    codecLabel: 'H.264/AAC',
     extension: 'mkv',
     mime: 'video/x-matroska',
     videoCodec: 'libx264',
@@ -55,7 +60,8 @@ export const ENCODING_PRESETS = [
   },
   {
     id: 'mkv-h265',
-    label: 'MKV · H.265/AAC',
+    containerLabel: 'MKV',
+    codecLabel: 'H.265/AAC',
     extension: 'mkv',
     mime: 'video/x-matroska',
     videoCodec: 'libx265',
@@ -64,7 +70,8 @@ export const ENCODING_PRESETS = [
   },
   {
     id: 'webm-vp9',
-    label: 'WebM · VP9/Opus',
+    containerLabel: 'WebM',
+    codecLabel: 'VP9/Opus',
     extension: 'webm',
     mime: 'video/webm',
     videoCodec: 'libvpx-vp9',
@@ -73,7 +80,8 @@ export const ENCODING_PRESETS = [
   },
   {
     id: 'webm-vp8',
-    label: 'WebM · VP8/Opus',
+    containerLabel: 'WebM',
+    codecLabel: 'VP8/Opus',
     extension: 'webm',
     mime: 'video/webm',
     videoCodec: 'libvpx',
@@ -83,8 +91,18 @@ export const ENCODING_PRESETS = [
 ] as const satisfies readonly EncodingPresetDefinition[];
 
 export type OutputFormat = (typeof ENCODING_PRESETS)[number]['id'];
+export type OutputContainer = (typeof ENCODING_PRESETS)[number]['extension'];
 export type EncodingPreset = EncodingPresetDefinition & { id: OutputFormat };
 export const DEFAULT_OUTPUT_FORMAT: OutputFormat = ENCODING_PRESETS[0].id;
+export const OUTPUT_CONTAINERS = ENCODING_PRESETS.reduce<Array<{ id: OutputContainer; label: string }>>(
+  (containers, preset) => {
+    if (!containers.some((container) => container.id === preset.extension)) {
+      containers.push({ id: preset.extension, label: preset.containerLabel });
+    }
+    return containers;
+  },
+  [],
+);
 
 const presetById = Object.fromEntries(
   ENCODING_PRESETS.map((preset) => [preset.id, preset]),
@@ -96,4 +114,12 @@ export function getEncodingPreset(outputFormat: OutputFormat): EncodingPreset {
 
 export function isOutputFormat(value: string): value is OutputFormat {
   return Object.prototype.hasOwnProperty.call(presetById, value);
+}
+
+export function isOutputContainer(value: string): value is OutputContainer {
+  return OUTPUT_CONTAINERS.some((container) => container.id === value);
+}
+
+export function getPresetsByContainer(container: OutputContainer): EncodingPreset[] {
+  return ENCODING_PRESETS.filter((preset) => preset.extension === container) as EncodingPreset[];
 }

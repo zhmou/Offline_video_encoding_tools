@@ -1,6 +1,9 @@
 node_modules/
 dist/
 .npm-cache/
+.localappdata/
+.ms-playwright/
+.playwright-cli/
 public/ffmpeg-core/
 output/
 test-results/
